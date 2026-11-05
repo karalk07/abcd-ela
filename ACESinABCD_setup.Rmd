@@ -1,0 +1,440 @@
+---
+title: "acesinabcd_setup_7.0"
+author: "FB"
+date: "2026-10-02"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup file for creating adversity scores in ABCD
+**Note: in sandbox this code takes about 50' to run straight through with 16 cores, once RDS is created, there is not longer a need for such capacity
+
+Running this code will create an RDS file including all relevant variables for sum score creation and a CSV file needed for the Life Events Scale items.
+
+Prior to running, will need to find and replace "ABCDdatadir" with the path to the directory where you can access the ABCD data.
+
+If you are downloading the ABCD data rather than completing this in the NBCD/Lasso Sandbox environment, and you have a cvs vs a tsv data file, you will need to update this code from read_tsv to read.csv and adjust the location of the data
+eg.: read.csv("release/abcd/v7.0/rawdata/phenotype/mh_y_ple.csv", header = TRUE, stringsAsFactors = FALSE)
+
+```{r}
+#install.packages("naniar")
+library(readr)
+library(dplyr)
+library(psych)
+library(naniar)
+
+#setting Sandbox working directory
+setwd("~/ABCD_data/ACESinABCD")
+```
+
+
+```{r step-1-Life-Events-Scale-youth}
+#step 1 - Life Events Scale, youth report
+#life events first collected at year 1, but there is a past year variable, so to include data for baseline, baseline variables are created for any "yes" that did NOT occur in the last year
+
+#Example item: parent incarceration
+#One of the parents/caregivers went to jail?	1 = Yes; 0 = No
+#Did this happen in the past year?	1 = Yes; 0 = No
+
+mh_y_le= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/mh_y_ple.tsv',show_col_types = FALSE) 
+
+#recode empty as NA
+mh_y_le[mh_y_le==""] =NA
+mh_y_le[mh_y_le=="n/a"] =NA
+
+#create subset dataframe with only variables used
+mh_y_le = mh_y_le[c("participant_id","session_id", "mh_y_ple_022", "mh_y_ple_018", "mh_y_ple_017", "mh_y_ple_015", "mh_y_ple_014", "mh_y_ple_019", "mh_y_ple_008", "mh_y_ple_022__01", "mh_y_ple_018__01", "mh_y_ple_017__01", "mh_y_ple_015__01", "mh_y_ple_014__01", "mh_y_ple_019__01", "mh_y_ple_008__01", "mh_y_ple_026", "mh_y_ple_026__01", "mh_y_ple_028", "mh_y_ple_028__01")]
+colnames(mh_y_le)
+mh_y_le <- mh_y_le %>%
+    mutate_at(vars("mh_y_ple_022" ,    "mh_y_ple_018"  ,   "mh_y_ple_017"  ,   "mh_y_ple_015"    , "mh_y_ple_014"    , "mh_y_ple_019"   , 
+"mh_y_ple_008"  ,   "mh_y_ple_022__01" ,"mh_y_ple_018__01" ,"mh_y_ple_017__01" ,"mh_y_ple_015__01", "mh_y_ple_014__01", "mh_y_ple_019__01" ,"mh_y_ple_008__01",
+"mh_y_ple_026"   ,  "mh_y_ple_026__01", "mh_y_ple_028" ,    "mh_y_ple_028__01"), as.numeric)
+#recoding ABCD 6.0 variable names to 5.1 names for remaining code
+mh_y_le$ple_jail_y = mh_y_le$mh_y_ple_022
+mh_y_le$ple_separ_y = mh_y_le$mh_y_ple_018
+mh_y_le$ple_victim_y = mh_y_le$mh_y_ple_017
+mh_y_le$ple_mh_y = mh_y_le$mh_y_ple_015
+mh_y_le$ple_arrest_y = mh_y_le$mh_y_ple_014
+mh_y_le$ple_law_y = mh_y_le$mh_y_ple_019
+mh_y_le$ple_sud_y = mh_y_le$mh_y_ple_008
+mh_y_le$ple_foster_care_y = mh_y_le$mh_y_ple_028
+mh_y_le$ple_deported_y = mh_y_le$mh_y_ple_026
+
+#recode each item to be true at baseline if 1) it has EVER occurred and 2) it did NOT occur in past year
+mh_y_le$ple_jail_y_bs = ifelse(mh_y_le$mh_y_ple_022 == 1 & mh_y_le$mh_y_ple_022__01 == 0, 1, 0)
+mh_y_le$ple_separ_y_bs = ifelse(mh_y_le$mh_y_ple_018 == 1 & mh_y_le$mh_y_ple_018__01 == 0, 1, 0)
+mh_y_le$ple_victim_y_bs = ifelse(mh_y_le$mh_y_ple_017 == 1 & mh_y_le$mh_y_ple_017__01 == 0, 1, 0)
+mh_y_le$ple_mh_y_bs = ifelse(mh_y_le$mh_y_ple_015 == 1 & mh_y_le$mh_y_ple_015__01 == 0, 1, 0)
+mh_y_le$ple_arrest_y_bs = ifelse(mh_y_le$mh_y_ple_014 == 1 & mh_y_le$mh_y_ple_014__01 == 0, 1, 0)
+mh_y_le$ple_law_y_bs = ifelse(mh_y_le$mh_y_ple_019 == 1 & mh_y_le$mh_y_ple_019__01 == 0, 1, 0)
+mh_y_le$ple_sud_y_bs = ifelse(mh_y_le$mh_y_ple_008 == 1 & mh_y_le$mh_y_ple_008__01 == 0, 1, 0)
+
+#save recoded data to mh_y_le_bs
+mh_y_le_bs = mh_y_le[mh_y_le$session_id == "ses-01A",]
+mh_y_le_bs = mh_y_le_bs[c("participant_id", "ple_jail_y_bs", "ple_separ_y_bs", "ple_victim_y_bs", "ple_mh_y_bs", "ple_arrest_y_bs", "ple_law_y_bs", "ple_sud_y_bs")]
+```
+
+
+```{r step-2-Life-Events-Scale-parent}
+#step 2 - Life Events Scale, parent report
+#same as youth report, life events first collected at year 1, but there is a past year variable, so to include data for baseline, baseline variables are created for any "yes" that did NOT occur in the last year
+
+#Example item: parent incarceration
+#One of the parents/caregivers went to jail?	1 = Yes; 0 = No
+#Did this happen in the past year?	1 = Yes; 0 = No
+mh_p_le= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/mh_p_ple.tsv', show_col_types = FALSE)
+
+#recode empty as NA
+mh_p_le[mh_p_le==""] =NA
+mh_p_le[mh_p_le=="n/a"] =NA
+
+#create subset dataframe with only variables used
+mh_p_le = mh_p_le[c("participant_id","session_id", "mh_p_ple_017", "mh_p_ple_015", "mh_p_ple_014", "mh_p_ple_019", "mh_p_ple_022", "mh_p_ple_008", "mh_p_ple_018", "mh_p_ple_022__01", "mh_p_ple_018__01", "mh_p_ple_017__01", "mh_p_ple_015__01", "mh_p_ple_014__01", "mh_p_ple_019__01", "mh_p_ple_008__01", "mh_p_ple_026", "mh_p_ple_026__01", "mh_p_ple_028", "mh_p_ple_028__01")]
+colnames(mh_p_le)
+
+mh_p_le <- mh_p_le %>%
+    mutate_at(vars("mh_p_ple_022" ,    "mh_p_ple_018"  ,   "mh_p_ple_017"  ,   "mh_p_ple_015"    , "mh_p_ple_014"    , "mh_p_ple_019"   , 
+"mh_p_ple_008"  ,   "mh_p_ple_022__01" ,"mh_p_ple_018__01" ,"mh_p_ple_017__01" ,"mh_p_ple_015__01", "mh_p_ple_014__01", "mh_p_ple_019__01" ,"mh_p_ple_008__01",
+"mh_p_ple_026"   ,  "mh_p_ple_026__01", "mh_p_ple_028" ,    "mh_p_ple_028__01"), as.numeric)
+
+#recoding ABCD 6.0 variable names to 5.1 names for remaining code
+mh_p_le$ple_jail_p = mh_p_le$mh_p_ple_022
+mh_p_le$ple_victim_p = mh_p_le$mh_p_ple_017
+mh_p_le$ple_mh_p = mh_p_le$mh_p_ple_015
+mh_p_le$ple_arrest_p = mh_p_le$mh_p_ple_014
+mh_p_le$ple_law_p = mh_p_le$mh_p_ple_019
+mh_p_le$ple_sud_p = mh_p_le$mh_p_ple_008
+mh_p_le$ple_foster_care_p = mh_p_le$mh_p_ple_028
+mh_p_le$ple_separ_p = mh_p_le$mh_p_ple_018
+mh_p_le$ple_deported_p = mh_p_le$mh_p_ple_026
+
+mh_p_le$ple_jail_p_bs = ifelse(mh_p_le$mh_p_ple_022 == 1 & mh_p_le$mh_p_ple_022__01 == 0, 1, 0)
+mh_p_le$ple_separ_p_bs = ifelse(mh_p_le$mh_p_ple_018 == 1 & mh_p_le$mh_p_ple_018__01 == 0, 1, 0)
+mh_p_le$ple_victim_p_bs = ifelse(mh_p_le$mh_p_ple_017 == 1 & mh_p_le$mh_p_ple_017__01 == 0, 1, 0)
+mh_p_le$ple_mh_p_bs = ifelse(mh_p_le$mh_p_ple_015 == 1 & mh_p_le$mh_p_ple_015__01 == 0, 1, 0)
+mh_p_le$ple_arrest_p_bs = ifelse(mh_p_le$mh_p_ple_014 == 1 & mh_p_le$mh_p_ple_014__01 == 0, 1, 0)
+mh_p_le$ple_law_p_bs = ifelse(mh_p_le$mh_p_ple_019 == 1 & mh_p_le$mh_p_ple_019__01 == 0, 1, 0)
+mh_p_le$ple_sud_p_bs = ifelse(mh_p_le$mh_p_ple_008 == 1 & mh_p_le$mh_p_ple_008__01 == 0, 1, 0)
+
+#save recoded data to mh_p_le_bs
+mh_p_le_bs = mh_p_le[mh_p_le$session_id == "ses-01A",]
+mh_p_le_bs = mh_p_le_bs[c("participant_id", "ple_jail_p_bs", "ple_separ_p_bs", "ple_victim_p_bs", "ple_mh_p_bs", "ple_arrest_p_bs", "ple_law_p_bs", "ple_sud_p_bs")]
+
+#merge with youth report and save as csv for future use
+mh_py_le_bs = left_join(mh_y_le_bs, mh_p_le_bs, by=c("participant_id")) 
+write.csv(mh_py_le_bs, "mh_py_le_bs.csv")
+```
+
+```{r}
+#step 3 - KSADS (parent report)
+
+#note KSADS for parents is collect every other year (ses-00A, ses-02A, ses-04A, ses-06A)
+#KSADS 2.0 started at year 3 per the ABCD readme: https://docs.abcdstudy.org/latest/documentation/non_imaging/mh.html#mh_p_ksads__ptsd
+#variable wording changed and additional items were added and have been updated here in line with the decisions made in the Breslin et al paper
+
+#KSADS item levels were updated to new variable names when re-released in ABCD7.0, the conversion is listed below and a note is included if at some point the wording of the item was modified.
+
+#ksads_ptsd_raw_754_p	--> mh_p_ksads__ptsd__screen_001___1    A car accident in which your child or another person in the car was hurt bad enough to require medical attention		
+#ksads_ptsd_raw_755_p	--> mh_p_ksads__ptsd__screen_001___2    *wording change* Another significant accident for which your child needed specialized and intensive medical treatment		
+#ksads_ptsd_raw_756_p	--> mh_p_ksads__ptsd__screen_001___3    Witnessed or caught in a fire that caused significant property damage or personal injury	              	
+#ksads_ptsd_raw_757_p	--> mh_p_ksads__ptsd__screen_001___4    Witnessed or caught in a natural disaster that caused significant property damage or personal injury		
+#ksads_ptsd_raw_758_p --> mh_p_ksads__ptsd__screen_001___5	  *wording change* Witnessed or present during an act of terrorism (e.g., Boston marathon bombing)   
+#ksads_ptsd_raw_759_p --> mh_p_ksads__ptsd__screen_001___6	  Witnessed death or mass destruction in a war zone	
+#ksads_ptsd_raw_760_p --> mh_p_ksads__ptsd__screen_001___7    Witnessed someone shot or stabbed in the community		
+#ksads_ptsd_raw_761_p --> mh_p_ksads__ptsd__screen_001___8    Shot, stabbed, or beaten brutally by a non-family member		
+#ksads_ptsd_raw_762_p --> mh_p_ksads__ptsd__screen_001___9    Shot, stabbed, or beaten brutally by a grown up in the home		
+#ksads_ptsd_raw_763_p --> mh_p_ksads__ptsd__screen_001___10   Beaten to the point of having bruises by a grown up in the home	                                  	
+#ksads_ptsd_raw_764_p --> mh_p_ksads__ptsd__screen_001___11   A non-family member threatened to kill your child		
+#ksads_ptsd_raw_765_p --> mh_p_ksads__ptsd__screen_001___12	  A family member threatened to kill your child	
+#ksads_ptsd_raw_766_p --> mh_p_ksads__ptsd__screen_001___13   Witness the grownups in the home push, shove or hit one another	                                  	
+#ksads_ptsd_raw_767_p --> mh_p_ksads__ptsd__screen_001___14   A grown up in the home touched your child in their privates, had your child touch their privates, or did other sexual things to your child		
+#ksads_ptsd_raw_768_p --> mh_p_ksads__ptsd__screen_001___15   An adult outside your family touched your child in their privates, had your child touch their privates or did other sexual things to your child		
+#ksads_ptsd_raw_769_p --> mh_p_ksads__ptsd__screen_001___16   A peer forced your child to do something sexually		
+#ksads_ptsd_raw_770_p --> mh_p_ksads__ptsd__screen_001___17   *wording change* Learned about the sudden unexpected death of a loved one
+
+#new variables:
+#mh_p_ksads__ptsd__screen_001___19 -  Was robbed and assaulted or robbed and threatened physically
+#mh_p_ksads__ptsd__screen_001___21 -  A grown-up touched your child in his or her privates, had your child touch their privates, or did other sexual things to your child
+#mh_p_ksads__ptsd__screen_001___22 -  Your child had to leave home, either because the country where your child lived was not safe, things were not safe in the home, or for some other reason
+#mh_p_ksads__ptsd__screen_001___24 -  Someone forced your child to do something sexually, such as touching him/her in their privates, having him/her touch their privates, or other sexual things.
+
+#inital version: mh_p_ksads_ptsd = mh_p_ksads_ptsd[c("src_subject_id", "eventname", "ksads_ptsd_raw_761_p", "ksads_ptsd_raw_762_p", "ksads_ptsd_raw_763_p", "ksads_ptsd_raw_764_p", "ksads_ptsd_raw_765_p", "ksads_ptsd_raw_767_p", "ksads_ptsd_raw_768_p", "ksads_ptsd_raw_769_p", "ksads_ptsd_raw_766_p", "ksads_ptsd_raw_756_p", "ksads_ptsd_raw_757_p", "ksads_ptsd_raw_758_p", "ksads_ptsd_raw_759_p", "ksads_ptsd_raw_760_p")]
+
+mh_p_ksads_ptsd= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/mh_p_ksads__ptsd.tsv')
+
+#recode empty as NA (removing date column)
+mh_p_ksads_ptsd <- mh_p_ksads_ptsd %>%
+  mutate(across(
+    where(is.character) & -mh_p_ksads__ptsd_dtt,
+    ~ na_if(.x, "")
+  ))
+mh_p_ksads_ptsd <- mh_p_ksads_ptsd %>%
+  mutate(across(
+    where(is.character) & -mh_p_ksads__ptsd_dtt,
+    ~ na_if(.x, "n/a")
+  ))
+
+#create subset dataframe with only variables used
+mh_p_ksads_ptsd = mh_p_ksads_ptsd[c("participant_id","session_id", "mh_p_ksads__ptsd__screen_001___3", "mh_p_ksads__ptsd__screen_001___4", "mh_p_ksads__ptsd__screen_001___5", "mh_p_ksads__ptsd__screen_001___6", "mh_p_ksads__ptsd__screen_001___7", "mh_p_ksads__ptsd__screen_001___8", "mh_p_ksads__ptsd__screen_001___9", "mh_p_ksads__ptsd__screen_001___10", "mh_p_ksads__ptsd__screen_001___11", "mh_p_ksads__ptsd__screen_001___12", "mh_p_ksads__ptsd__screen_001___13", "mh_p_ksads__ptsd__screen_001___14", "mh_p_ksads__ptsd__screen_001___15", "mh_p_ksads__ptsd__screen_001___16", "mh_p_ksads__ptsd__screen_001___19", "mh_p_ksads__ptsd__screen_001___21", "mh_p_ksads__ptsd__screen_001___22", "mh_p_ksads__ptsd__screen_001___24")]
+
+```
+
+```{r}
+#step 3.5 - KSADS (youth report)
+
+#note KSADS for youth is collect every year starting at year 6 (ses-06A, ses-07A)
+
+mh_y_ksads_ptsd= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/mh_y_ksads__ptsd.tsv')
+
+#recode empty as NA (removing date column)
+mh_y_ksads_ptsd <- mh_y_ksads_ptsd %>%
+  mutate(across(
+    where(is.character) & -mh_y_ksads__ptsd_dtt,
+    ~ na_if(.x, "")
+  ))
+mh_y_ksads_ptsd <- mh_y_ksads_ptsd %>%
+  mutate(across(
+    where(is.character) & -mh_y_ksads__ptsd_dtt,
+    ~ na_if(.x, "n/a")
+  ))
+
+#create subset dataframe with only variables used
+mh_y_ksads_ptsd = mh_y_ksads_ptsd[c("participant_id","session_id", "mh_y_ksads__ptsd__screen_001___3", "mh_y_ksads__ptsd__screen_001___4", "mh_y_ksads__ptsd__screen_001___5", "mh_y_ksads__ptsd__screen_001___6", "mh_y_ksads__ptsd__screen_001___7", "mh_y_ksads__ptsd__screen_001___8", "mh_y_ksads__ptsd__screen_001___9", "mh_y_ksads__ptsd__screen_001___10", "mh_y_ksads__ptsd__screen_001___11", "mh_y_ksads__ptsd__screen_001___12", "mh_y_ksads__ptsd__screen_001___13", "mh_y_ksads__ptsd__screen_001___14", "mh_y_ksads__ptsd__screen_001___15", "mh_y_ksads__ptsd__screen_001___16", "mh_y_ksads__ptsd__screen_001___19", "mh_y_ksads__ptsd__screen_001___21", "mh_y_ksads__ptsd__screen_001___22", "mh_y_ksads__ptsd__screen_001___24")]
+```
+
+
+```{r step-4-fes-youth}
+#step 4: Family Environment Scale (youth report)
+#Family members often criticize each other. 
+ce_y_fes= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/fc_y_fes.tsv', show_col_types = FALSE)
+
+#recode empty as NA
+ce_y_fes[ce_y_fes==""] =NA
+ce_y_fes[ce_y_fes=="n/a"] =NA
+
+#recoding ABCD 6.0 variable names to 5.1 names for remaining code
+ce_y_fes$fes_youth_q5 = ce_y_fes$fc_y_fes__confl_005
+
+#subset with item needed
+ce_y_fes = ce_y_fes[c("participant_id","session_id", "fes_youth_q5")]
+```
+
+```{r step-5-crpbi-youth}
+#step 5 - CRPBI (youth report)
+#only include caregiver in study, since every child has that (secondary caregiver was optional)
+#1 = Not like him/her; 2 = Somewhat like him/her; 3 = A lot like him/her
+#recode: <=2 as indicative of emotional neglect
+#ELA+ using decimal with max 1
+
+ce_y_crpbi= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/fc_y_crpbi.tsv', show_col_types = FALSE)
+
+#recode empty as NA
+ce_y_crpbi[ce_y_crpbi==""] =NA
+ce_y_crpbi[ce_y_crpbi=="n/a"] =NA
+
+#subset dataframe with only items needed
+ce_y_crpbi = ce_y_crpbi[c("participant_id","session_id", "fc_y_crpbi__cg1_mean")]
+
+#<2 considered an adverse experience (emo neglect)
+ce_y_crpbi$crpbi_y_ss_parent_ace = ifelse(ce_y_crpbi$fc_y_crpbi__cg1_mean <2, 1, 0)
+
+```
+
+```{r step-6-demographics}
+#step 6 - demographics (financial adversity)
+#the two variable names represent the same item administered at baseline and subsequent time points
+#ab_p_demo__exp__fam_001 = demo_fam_exp1_v2/demo_fam_exp1_v2_l Needed food but couldn't afford it
+#ab_p_demo__exp__fam_002 = demo_fam_exp2_v2/demo_fam_exp2_v2_l Were w/o telephone service because couldn't afford it
+#ab_p_demo__exp__fam_003 = demo_fam_exp3_v2/demo_fam_exp3_v2_l Didn't pay rent/mortgage because couldn't afford it
+#ab_p_demo__exp__fam_004 = demo_fam_exp4_v2/demo_fam_exp4_v2_l Evicted for not paying rent/mortgage
+#ab_p_demo__exp__fam_005 = demo_fam_exp5_v2/demo_fam_exp5_v2_l Gas/electric/oil stopped because payments not made
+#ab_p_demo__exp__fam_006 = demo_fam_exp6_v2/demo_fam_exp6_v2_l Needed medical care but couldn't afford it
+#ab_p_demo__exp__fam_007 = demo_fam_exp7_v2/demo_fam_exp7_v2_l Needed dental care but couldn't afford it
+#ab_p_demo__marital__slf_001 = demo_prnt_marital_v2/demo_prnt_marital_v2_l Are you now married, widowed, divorced, separated, never married, or living with a partner?
+abcd_p_demo= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/ab_p_demo.tsv', show_col_types = FALSE)
+
+#recode empty as NA
+abcd_p_demo[abcd_p_demo==""] =NA
+abcd_p_demo[abcd_p_demo=="n/a"] =NA
+
+#recoding ABCD 6.0 variable names to 5.1 names for remaining code
+abcd_p_demo$demo_fam_exp1_v2 = abcd_p_demo$ab_p_demo__exp__fam_001
+abcd_p_demo$demo_fam_exp2_v2 = abcd_p_demo$ab_p_demo__exp__fam_002
+abcd_p_demo$demo_fam_exp3_v2 = abcd_p_demo$ab_p_demo__exp__fam_003
+abcd_p_demo$demo_fam_exp4_v2 = abcd_p_demo$ab_p_demo__exp__fam_004
+abcd_p_demo$demo_fam_exp5_v2 = abcd_p_demo$ab_p_demo__exp__fam_005
+abcd_p_demo$demo_fam_exp6_v2 = abcd_p_demo$ab_p_demo__exp__fam_006
+abcd_p_demo$demo_fam_exp7_v2 = abcd_p_demo$ab_p_demo__exp__fam_007
+abcd_p_demo$demo_prnt_marital_v2 = abcd_p_demo$ab_p_demo__marital__slf_001
+
+#subset dataframe with only items needed
+abcd_p_demo = abcd_p_demo[c("participant_id","session_id", "demo_fam_exp1_v2", "demo_fam_exp2_v2", "demo_fam_exp3_v2", "demo_fam_exp4_v2", "demo_fam_exp5_v2", "demo_fam_exp6_v2", "demo_fam_exp7_v2", "demo_prnt_marital_v2")]
+```
+
+```{r step-7-safety}
+#step 7 - Neighborhood Safety/Crime
+#The following questions are about your neighborhood. Your neighborhood is the area within about a 20-minute walk (or about a mile) from your home. For each of the statements please indicate whether you strongly agree, agree, neither agree nor disagree, disagree, or strongly disagree	
+#Violence is not a problem in my neighborhood. 
+#1 = Strongly Disagree /Muy en desacuerdo; 2 = Disagree /En desacuerdo; 3 = Neutral (neither agree nor disagree)/ Neutral (ni de acuerdo ni en desacuerdo); 4 = Agree /De acuerdo; 5 = Strongly Agree/ Muy de acuerdo//
+#My neighborhood is safe from crime. 
+#1 = Strongly Disagree /Muy en desacuerdo; 2 = Disagree /En desacuerdo; 3 = Neutral (neither agree nor disagree)/ Neutral (ni de acuerdo ni en desacuerdo); 4 = Agree /De acuerdo; 5 = Strongly Agree/ Muy de acuerdo//
+
+#parent report
+ce_p_nsc= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/fc_p_nsc.tsv', show_col_types = FALSE)
+
+#recode empty as NA
+ce_p_nsc[ce_p_nsc==""] =NA
+ce_p_nsc[ce_p_nsc=="n/a"] =NA
+
+#subset dataframe with only item needed
+ce_p_nsc = ce_p_nsc[c("participant_id","session_id", "fc_p_nsc__ns_002","fc_p_nsc__ns_003")]
+
+#recode: 3/4/5=0, 2/1=1
+ce_p_nsc$neighborhood2r_p_ela = ifelse(ce_p_nsc$fc_p_nsc__ns_002 >2, 0, 1)
+ce_p_nsc$neighborhood3r_p_ela = ifelse(ce_p_nsc$fc_p_nsc__ns_003 >2, 0, 1)
+
+#youth report
+#My neighborhood is safe from crime. (1=Strongly disagree; 5=Strongly agree)
+ce_y_nsc= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/fc_y_nsc.tsv')
+
+#recode empty as NA
+ce_y_nsc[ce_y_nsc==""] =NA
+ce_y_nsc[ce_y_nsc=="n/a"] =NA
+
+#subset dataframe with only item needed
+ce_y_nsc = ce_y_nsc[c("participant_id","session_id", "fc_y_nsc__ns_003")]
+
+#recode: 3/4/5=0, 2/1=1
+ce_y_nsc$nbh_crime_y_ela = ifelse(ce_y_nsc$fc_y_nsc__ns_003 >2, 0, 1)
+
+```
+
+```{r step-8-asr}
+#step 8
+
+# **ASR t-scores have been removed from ABCD 6.0 due to lack to reliable sex data. There is code to calculate this scores, but you must first purchase the norms from ASEBA. https://software.nbdc-datahub.org/ABCDscores/reference/index.html#mental-health-aseba-**
+
+#step 8 - Adult Self-Report (parent mental illness and substance abuse)
+#https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7441087/ score of >= 64 clinically elevated, due to lack of t-scores, we used z-scores greater than 1.4
+#mh_p_asr_sum = asr_scr_totprob_r from NDA (5.1 and below)
+
+mh_p_asr= read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/mh_p_asr.tsv', show_col_types = FALSE)
+
+#recode empty as NA
+mh_p_asr[mh_p_asr==""] =NA
+mh_p_asr[mh_p_asr=="n/a"] =NA
+
+#subset dataframe with only items needed
+mh_p_asr = mh_p_asr[c("participant_id","session_id","mh_p_asr__rule_001", "mh_p_asr_sum")]
+
+mh_p_asr$mh_p_asr_sum = as.numeric(mh_p_asr$mh_p_asr_sum)
+table(mh_p_asr$mh_p_asr_sum)
+
+#ASR clinical t-score of 63 is ~90-91st percentile
+#90th percentile is score of 55, so any score 55 or below is coded as not clinical
+mh_p_asr %>% 
+  summarize(p90 = quantile(mh_p_asr_sum, 0.9, na.rm = TRUE))
+mh_p_asr$asr_totalprob_ace = ifelse(mh_p_asr$mh_p_asr_sum <=55, 0, 1)
+table (mh_p_asr$asr_totalprob_ace)
+
+#converting q06 to yes/no
+#asr_q06_p I use drugs (other than alcohol, nicotine) for nonmedical purposes
+#0 = Not True No es cierto; 1 = Somewhat/Sometimes True En cierta manera; 2 = Very True/Often True
+mh_p_asr$asr_q06_p_ace = ifelse(mh_p_asr$mh_p_asr__rule_001 >0, 1, 0)
+mh_p_asr$asr_q06_p = mh_p_asr$mh_p_asr__rule_001
+```
+
+
+```{r step-9-fam-hx}
+#step 9 - family history (parent report)
+
+#prior either parent variables were removed from ABCD 6.0, this code recaluates them from the raw data
+#famhx_ss_momdad_ma_p	Either parent with mania problem
+#famhx_ss_momdad_alc_p	Either parent with alcohol problem
+#famhx_ss_momdad_dg_p	Either parent with drug use problem
+#famhx_ss_momdad_dprs_p	Either parent with depression problem
+#famhx_ss_momdad_hspd_p	Either parent hospitalized due to emotional/mental problem
+#famhx_ss_momdad_scd_p	Either parent attempted or committed suicide
+#famhx_ss_momdad_vs_p	Either parent with visions of others spying/plotting problem
+
+#note about Family History variables, if the response for any family member having that specific issue is no, there will not be follow-up items asking specifically about mom or dad.
+mh_p_fhx = read_tsv('/shared/release/abcd/v7.0/rawdata/phenotype/mh_p_famhx.tsv', show_col_types = FALSE)
+mh_p_fhx = mh_p_fhx[c("participant_id","session_id", "mh_p_famhx__drg__moth_001___1", "mh_p_famhx__drg__moth_001___2", "mh_p_famhx__drg__moth_001___3", "mh_p_famhx__drg__moth_001___4", "mh_p_famhx__drg__moth_001___5", "mh_p_famhx__drg__moth_001___6", "mh_p_famhx__drg__moth_001___7", "mh_p_famhx__drg__fath_001___1", "mh_p_famhx__drg__fath_001___2", "mh_p_famhx__drg__fath_001___3", "mh_p_famhx__drg__fath_001___4", "mh_p_famhx__drg__fath_001___5", "mh_p_famhx__drg__fath_001___6", "mh_p_famhx__drg__fath_001___7", "mh_p_famhx__alc__fath_001___1", "mh_p_famhx__alc__fath_001___2", "mh_p_famhx__alc__fath_001___3", "mh_p_famhx__alc__fath_001___4", "mh_p_famhx__alc__fath_001___5", "mh_p_famhx__alc__fath_001___6", "mh_p_famhx__alc__fath_001___7", "mh_p_famhx__alc__moth_001___1", "mh_p_famhx__alc__moth_001___2", "mh_p_famhx__alc__moth_001___3", "mh_p_famhx__alc__moth_001___4", "mh_p_famhx__alc__moth_001___5", "mh_p_famhx__alc__moth_001___6", "mh_p_famhx__alc__moth_001___7", "mh_p_famhx__mania__moth_001", "mh_p_famhx__mania__fath_001", "mh_p_famhx__hosp__moth_001", "mh_p_famhx__hosp__fath_001", "mh_p_famhx__suic__fath_001", "mh_p_famhx__suic__moth_001", "mh_p_famhx__dep__moth_001", "mh_p_famhx__dep__fath_001", "mh_p_famhx__nerve__moth_001", "mh_p_famhx__nerve__fath_001", "mh_p_famhx__halluc__fath_001", "mh_p_famhx__halluc__moth_001")]
+
+mh_p_fhx[mh_p_fhx==""] =NA
+mh_p_fhx[mh_p_fhx=="n/a"] =NA
+
+mh_p_fhx = replace_with_na_all(mh_p_fhx, condition = ~.x == 777)
+mh_p_fhx = replace_with_na_all(mh_p_fhx, condition = ~.x == 999)
+
+mh_p_fhx$famhx_ss_momdad_ma_p1 = as.numeric(mh_p_fhx$mh_p_famhx__mania__moth_001) + as.numeric(mh_p_fhx$mh_p_famhx__mania__fath_001)
+table(mh_p_fhx$famhx_ss_momdad_ma_p1)
+mh_p_fhx$famhx_ss_momdad_ma_p = ifelse(mh_p_fhx$famhx_ss_momdad_ma_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_ma_p)
+
+mh_p_fhx$famhx_ss_momdad_dg_p1 = as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___1) + as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___2) + as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___3) + as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___4) + as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___5) + as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___6) + as.numeric(mh_p_fhx$mh_p_famhx__drg__fath_001___7) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___1) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___2) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___3) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___4) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___5) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___6) + as.numeric(mh_p_fhx$mh_p_famhx__drg__moth_001___7)
+table(mh_p_fhx$famhx_ss_momdad_dg_p1)
+describe(mh_p_fhx$famhx_ss_momdad_dg_p1)
+mh_p_fhx$famhx_ss_momdad_dg_p = ifelse(mh_p_fhx$famhx_ss_momdad_dg_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_dg_p)
+
+mh_p_fhx$famhx_ss_momdad_alc_p1 = as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___1) + as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___2) + as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___3) + as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___4) + as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___5) + as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___6) + as.numeric(mh_p_fhx$mh_p_famhx__alc__fath_001___7) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___1) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___2) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___3) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___4) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___5) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___6) + as.numeric(mh_p_fhx$mh_p_famhx__alc__moth_001___7)
+table(mh_p_fhx$famhx_ss_momdad_alc_p1)
+describe(mh_p_fhx$famhx_ss_momdad_alc_p1)
+mh_p_fhx$famhx_ss_momdad_alc_p = ifelse(mh_p_fhx$famhx_ss_momdad_alc_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_alc_p)
+
+mh_p_fhx$famhx_ss_momdad_dprs_p1 = as.numeric(mh_p_fhx$mh_p_famhx__dep__fath_001) + as.numeric(mh_p_fhx$mh_p_famhx__dep__moth_001)
+table(mh_p_fhx$famhx_ss_momdad_dprs_p1)
+mh_p_fhx$famhx_ss_momdad_dprs_p = ifelse(mh_p_fhx$famhx_ss_momdad_dprs_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_dprs_p)
+
+mh_p_fhx$famhx_ss_momdad_hspd_p1 = as.numeric(mh_p_fhx$mh_p_famhx__hosp__moth_001) + as.numeric(mh_p_fhx$mh_p_famhx__hosp__fath_001)
+table(mh_p_fhx$famhx_ss_momdad_hspd_p1)
+mh_p_fhx$famhx_ss_momdad_hspd_p = ifelse(mh_p_fhx$famhx_ss_momdad_hspd_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_hspd_p)
+
+mh_p_fhx$famhx_ss_momdad_scd_p1 = as.numeric(mh_p_fhx$mh_p_famhx__suic__fath_001) + as.numeric(mh_p_fhx$mh_p_famhx__suic__moth_001)
+table(mh_p_fhx$famhx_ss_momdad_scd_p1)
+mh_p_fhx$famhx_ss_momdad_scd_p = ifelse(mh_p_fhx$famhx_ss_momdad_scd_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_scd_p)
+
+mh_p_fhx$famhx_ss_momdad_vs_p1 = as.numeric(mh_p_fhx$mh_p_famhx__halluc__fath_001) + as.numeric(mh_p_fhx$mh_p_famhx__halluc__moth_001)
+table(mh_p_fhx$famhx_ss_momdad_vs_p1)
+mh_p_fhx$famhx_ss_momdad_vs_p = ifelse(mh_p_fhx$famhx_ss_momdad_vs_p1 == 0, 0, 1)
+table(mh_p_fhx$famhx_ss_momdad_vs_p)
+
+#subset data with only items needed
+mh_p_fhx = mh_p_fhx[c("participant_id","session_id", "famhx_ss_momdad_ma_p", "famhx_ss_momdad_alc_p", "famhx_ss_momdad_dg_p", "famhx_ss_momdad_dprs_p", "famhx_ss_momdad_hspd_p", "famhx_ss_momdad_scd_p", "famhx_ss_momdad_vs_p")]
+```
+
+
+```{r putting-it-all-together}
+#putting together all dataframes created previously into one
+step1 = left_join(ce_y_fes, mh_p_le, by=c("participant_id","session_id")) 
+step2 = left_join(step1, mh_p_ksads_ptsd, by=c("participant_id","session_id")) 
+step2.5 = left_join(step2, mh_y_ksads_ptsd, by=c("participant_id","session_id")) 
+step3 = left_join(step2.5,mh_y_le, by=c("participant_id","session_id")) 
+step4 = left_join(step3,ce_y_crpbi, by=c("participant_id","session_id")) 
+step5 = left_join(step4,abcd_p_demo, by=c("participant_id","session_id")) 
+step6 = left_join(step5,ce_p_nsc, by=c("participant_id","session_id"))
+step7 = left_join(step6,ce_y_nsc, by=c("participant_id","session_id"))
+step8 = left_join(step7,mh_p_asr, by=c("participant_id","session_id")) 
+ela_in_abcd = left_join(step8,mh_p_fhx, by=c("participant_id","session_id")) 
+
+ela_in_abcd <- ela_in_abcd %>% mutate_at(c("ple_deported_y","ple_deported_p","ple_jail_y","ple_separ_y","ple_victim_y","ple_mh_y","ple_arrest_y","ple_law_y","ple_sud_y","ple_foster_care_y","ple_victim_p","ple_mh_p","ple_arrest_p","ple_law_p","ple_jail_p","ple_sud_p","ple_separ_p","ple_foster_care_p","ple_jail_y_bs","ple_separ_y_bs","ple_victim_y_bs","ple_mh_y_bs","ple_arrest_y_bs","ple_law_y_bs","ple_sud_y_bs","ple_victim_p_bs","ple_mh_p_bs","ple_arrest_p_bs","ple_law_p_bs","ple_jail_p_bs","ple_sud_p_bs","ple_separ_p_bs","fes_youth_q5","crpbi_y_ss_parent_ace","demo_fam_exp1_v2","demo_fam_exp2_v2","demo_fam_exp3_v2","demo_fam_exp4_v2","demo_fam_exp5_v2","demo_fam_exp6_v2","demo_fam_exp7_v2","neighborhood2r_p_ela","neighborhood3r_p_ela","nbh_crime_y_ela","asr_totalprob_ace","asr_q06_p","asr_q06_p_ace","mh_p_asr_sum","famhx_ss_momdad_ma_p","famhx_ss_momdad_alc_p","famhx_ss_momdad_dg_p","famhx_ss_momdad_dprs_p","famhx_ss_momdad_hspd_p","famhx_ss_momdad_scd_p","famhx_ss_momdad_vs_p","mh_p_ksads__ptsd__screen_001___3", "mh_p_ksads__ptsd__screen_001___4", "mh_p_ksads__ptsd__screen_001___5", "mh_p_ksads__ptsd__screen_001___6", "mh_p_ksads__ptsd__screen_001___7", "mh_p_ksads__ptsd__screen_001___8", "mh_p_ksads__ptsd__screen_001___9", "mh_p_ksads__ptsd__screen_001___10", "mh_p_ksads__ptsd__screen_001___11", "mh_p_ksads__ptsd__screen_001___12", "mh_p_ksads__ptsd__screen_001___13", "mh_p_ksads__ptsd__screen_001___14", "mh_p_ksads__ptsd__screen_001___15", "mh_p_ksads__ptsd__screen_001___16", "mh_y_ksads__ptsd__screen_001___3", "mh_y_ksads__ptsd__screen_001___4", "mh_y_ksads__ptsd__screen_001___5", "mh_y_ksads__ptsd__screen_001___6", "mh_y_ksads__ptsd__screen_001___7", "mh_y_ksads__ptsd__screen_001___8", "mh_y_ksads__ptsd__screen_001___9", "mh_y_ksads__ptsd__screen_001___10", "mh_y_ksads__ptsd__screen_001___11", "mh_y_ksads__ptsd__screen_001___12", "mh_y_ksads__ptsd__screen_001___13", "mh_y_ksads__ptsd__screen_001___14", "mh_y_ksads__ptsd__screen_001___15", "mh_y_ksads__ptsd__screen_001___16", "mh_p_ksads__ptsd__screen_001___19", "mh_p_ksads__ptsd__screen_001___21", "mh_p_ksads__ptsd__screen_001___22", "mh_p_ksads__ptsd__screen_001___24", "mh_y_ksads__ptsd__screen_001___19", "mh_y_ksads__ptsd__screen_001___21", "mh_y_ksads__ptsd__screen_001___22", "mh_y_ksads__ptsd__screen_001___24"), as.numeric)
+saveRDS(ela_in_abcd, file = "ela_in_abcd.rds")
+
+#data cleaning
+#converting 777=refuse to answer to NA
+#this step may take up to 10 minutes!
+ela_in_abcd = replace_with_na_all(ela_in_abcd, condition = ~.x == 777)
+saveRDS(ela_in_abcd, file = "ela_in_abcd.rds")
+
+ela_in_abcd = replace_with_na_all(ela_in_abcd, condition = ~.x == 999)
+saveRDS(ela_in_abcd, file = "ela_in_abcd.rds")
+```
