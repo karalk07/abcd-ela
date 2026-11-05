@@ -2,7 +2,7 @@
 
 R Markdown files for creating measures of early life adversity in ABCD Data Release 7.1.
 
-You will need to run ELAfromABCD_setup.Rmd prior to running any of the code to create scores. The setup code will create csv and rds files needed for the score calculations.
+You will need to run ACESinABCD_setup.Rmd prior to running any of the code to create scores. The setup code will create csv and rds files needed for the score calculations.
 
 Three scores are available:
 1) ELAfromABCD_ELAplus.Rmd - Creates a measure of early life adversity that includes the 10 ACEs domains plus 4 additional domains: 1) exposure to natural disasters or terrorism; 2) (lack of) safety from violence/crime; 3) (lack of) resources, and 4) long-term separation from parents/caregivers (Year 3 only). 
